@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { useLiveExerciseDetection } from "@/lib/hooks/useLiveExerciseDetection";
+import { useRealtimeExerciseDetection } from "@/lib/hooks/useRealtimeExerciseDetection";
 import { ExerciseDetectionOverlay } from "@/components/camera/ExerciseDetectionOverlay";
 import {
   ExerciseSelector,
@@ -23,12 +23,13 @@ export function CameraView({
   const [selectedExercise, setSelectedExercise] =
     useState<ExerciseType>("overhead_press");
 
-  // Exercise detection hook
-  const { formFeedback, isDetecting, error } = useLiveExerciseDetection(
-    videoRef.current,
-    autoDetectEnabled && stream !== null,
-    selectedExercise
-  );
+  // Exercise detection hook with audio feedback
+  const { formFeedback, isDetecting, error, audioUrl } =
+    useRealtimeExerciseDetection(
+      videoRef.current,
+      autoDetectEnabled && stream !== null,
+      selectedExercise
+    );
 
   // Get the exercise name for display
   const exerciseName =
