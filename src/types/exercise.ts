@@ -1,17 +1,21 @@
-export type ExerciseType =
-  | "squat"
-  | "lunge"
-  | "shoulder_press"
-  | "leg_raise"
-  | "plank"
-  | "push_up"
-  | "bicep_curl"
-  | "none";
+export type ExerciseType = "overhead_press" | "external_rotation";
 
-export type ConfidenceLevel = "high" | "medium" | "low";
+export type FormQuality = "good" | "needs_improvement" | "poor";
+
+export interface FormFeedback {
+  quality: FormQuality;
+  feedback: string;
+  corrections: string[];
+  isPerformingExercise: boolean;
+}
 
 export interface ExerciseDetectionResult {
-  exercise: ExerciseType;
-  confidence: ConfidenceLevel;
+  formFeedback: FormFeedback;
   rawResponse: string;
+}
+
+export interface ExerciseInfo {
+  id: ExerciseType;
+  name: string;
+  description: string;
 }

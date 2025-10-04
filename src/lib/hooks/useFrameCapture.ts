@@ -3,6 +3,10 @@ import { videoToBase64 } from "@/lib/utils/imageProcessing";
 
 interface UseFrameCaptureReturn {
   captureFrame: () => Promise<string | null>;
+  captureFrameSequence: (
+    durationMs: number,
+    frameCount: number
+  ) => Promise<string[]>;
   isCapturing: boolean;
 }
 
@@ -40,8 +44,58 @@ export function useFrameCapture(
     }
   }, [videoElement]);
 
+  /**
+   * Captures a sequence of frames over a specified duration
+   * @param durationMs - Total duration to capture frames (in milliseconds)
+   * @param frameCount - Number of frames to capture
+   * @returns Array of base64-encoded frames
+   */
+  const captureFrameSequence = useCallback(
+    async (durationMs: number, frameCount: number): Promise<string[]> => {
+      if (!videoElement) {
+        console.warn("Video element not available for capture");
+        return [];
+      }
+
+      if (videoElement.readyState < videoElement.HAVE_CURRENT_DATA) {
+        console.warn("Video not ready for capture");
+        return [];
+      }
+
+      setIsCapturing(true);
+
+      try {
+        const frames: string[] = [];
+        const intervalMs = durationMs / (frameCount - 1);
+
+        for (let i = 0; i < frameCount; i++) {
+          try {
+            const frame = await videoToBase64(videoElement);
+            frames.push(frame);
+
+            // Wait before capturing next frame (except for the last one)
+            if (i < frameCount - 1) {
+              await new Promise((resolve) => setTimeout(resolve, intervalMs));
+            }
+          } catch (error) {
+            console.error(`Failed to capture frame ${i + 1}:`, error);
+          }
+        }
+
+        return frames;
+      } catch (error) {
+        console.error("Failed to capture frame sequence:", error);
+        return [];
+      } finally {
+        setIsCapturing(false);
+      }
+    },
+    [videoElement]
+  );
+
   return {
     captureFrame,
+    captureFrameSequence,
     isCapturing,
   };
 }

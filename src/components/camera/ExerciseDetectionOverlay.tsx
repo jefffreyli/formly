@@ -1,63 +1,51 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import type { ExerciseType, ConfidenceLevel } from "@/types/exercise";
+import type { FormFeedback, FormQuality, ExerciseType } from "@/types/exercise";
 
 interface ExerciseDetectionOverlayProps {
-  exercise: ExerciseType | null;
-  confidence: ConfidenceLevel | null;
+  formFeedback: FormFeedback | null;
   isDetecting: boolean;
   error: string | null;
+  exerciseName: string;
 }
 
-const EXERCISE_LABELS: Record<ExerciseType, string> = {
-  squat: "Squat",
-  lunge: "Lunge",
-  shoulder_press: "Shoulder Press",
-  leg_raise: "Leg Raise",
-  plank: "Plank",
-  push_up: "Push-up",
-  bicep_curl: "Bicep Curl",
-  none: "No Exercise",
+const QUALITY_LABELS: Record<FormQuality, string> = {
+  good: "Good Form",
+  needs_improvement: "Needs Improvement",
+  poor: "Poor Form",
 };
 
-const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
-  high: "High Confidence",
-  medium: "Medium Confidence",
-  low: "Low Confidence",
-};
-
-const CONFIDENCE_COLORS: Record<
-  ConfidenceLevel,
-  { dot: string; text: string }
+const QUALITY_COLORS: Record<
+  FormQuality,
+  { dot: string; bg: string; text: string }
 > = {
-  high: { dot: "bg-green-500", text: "text-green-700" },
-  medium: { dot: "bg-yellow-500", text: "text-yellow-700" },
-  low: { dot: "bg-red-500", text: "text-red-700" },
+  good: {
+    dot: "bg-green-500",
+    bg: "bg-green-50/90",
+    text: "text-green-800",
+  },
+  needs_improvement: {
+    dot: "bg-yellow-500",
+    bg: "bg-yellow-50/90",
+    text: "text-yellow-800",
+  },
+  poor: {
+    dot: "bg-red-500",
+    bg: "bg-red-50/90",
+    text: "text-red-800",
+  },
 };
 
 export function ExerciseDetectionOverlay({
-  exercise,
-  confidence,
+  formFeedback,
   isDetecting,
   error,
+  exerciseName,
 }: ExerciseDetectionOverlayProps) {
-  // Determine display state
-  let statusDot = "bg-gray-400";
-  let statusText = "Ready to detect";
-  let statusSubtext = "";
-
-  if (error) {
-    statusDot = "bg-red-500";
-    statusText = error;
-  } else if (isDetecting) {
-    statusDot = "bg-blue-500";
-    statusText = "Detecting...";
-  } else if (exercise && confidence) {
-    const colors = CONFIDENCE_COLORS[confidence];
-    statusDot = colors.dot;
-    statusText = EXERCISE_LABELS[exercise];
-    statusSubtext = CONFIDENCE_LABELS[confidence];
+  // Show nothing if no feedback and not detecting/error
+  if (!formFeedback && !isDetecting && !error) {
+    return null;
   }
 
   return (
@@ -67,34 +55,121 @@ export function ExerciseDetectionOverlay({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.3 }}
-        className="absolute top-4 left-4 z-10 bg-background-primary/90 backdrop-blur-sm rounded-xl shadow-formly-lg px-4 py-3 min-w-[200px]"
+        className="absolute top-4 left-4 right-4 z-10 max-w-md"
       >
-        <div className="flex items-start space-x-3">
-          {/* Status Dot */}
-          <div className="flex-shrink-0 pt-1">
-            {isDetecting ? (
-              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
-            ) : (
-              <div className={`w-3 h-3 ${statusDot} rounded-full`} />
-            )}
-          </div>
-
-          {/* Status Text */}
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-foreground-primary truncate">
-              {statusText}
-            </div>
-            {statusSubtext && (
-              <div
-                className={`text-xs mt-0.5 ${
-                  confidence && CONFIDENCE_COLORS[confidence].text
-                }`}
-              >
-                {statusSubtext}
+        {/* Error State */}
+        {error && (
+          <div className="bg-red-50/95 backdrop-blur-sm rounded-xl shadow-formly-lg px-4 py-3 border border-red-200">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 pt-1">
+                <div className="w-3 h-3 bg-red-500 rounded-full" />
               </div>
-            )}
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-red-800">
+                  {error}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Detecting State */}
+        {isDetecting && !error && (
+          <div className="bg-blue-50/95 backdrop-blur-sm rounded-xl shadow-formly-lg px-4 py-3 border border-blue-200">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 pt-1">
+                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-blue-800">
+                  Recording movement...
+                </div>
+                <div className="text-xs text-blue-700 opacity-80 mt-0.5">
+                  Analyzing your {exerciseName.toLowerCase()} form
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Form Feedback State */}
+        {formFeedback && !isDetecting && !error && (
+          <div
+            className={`backdrop-blur-sm rounded-xl shadow-formly-lg px-4 py-3 border ${
+              QUALITY_COLORS[formFeedback.quality].bg
+            } ${
+              formFeedback.quality === "good"
+                ? "border-green-200"
+                : formFeedback.quality === "needs_improvement"
+                ? "border-yellow-200"
+                : "border-red-200"
+            }`}
+          >
+            <div className="space-y-3">
+              {/* Header with Quality and Exercise Name */}
+              <div className="space-y-1">
+                <div className="flex items-start space-x-3">
+                  <div className="flex-shrink-0 pt-1">
+                    <div
+                      className={`w-3 h-3 ${
+                        QUALITY_COLORS[formFeedback.quality].dot
+                      } rounded-full`}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-medium opacity-70 mb-0.5">
+                      {exerciseName}
+                    </div>
+                    <div
+                      className={`text-sm font-bold ${
+                        QUALITY_COLORS[formFeedback.quality].text
+                      }`}
+                    >
+                      {formFeedback.isPerformingExercise
+                        ? QUALITY_LABELS[formFeedback.quality]
+                        : "Not Performing Exercise"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Feedback Text */}
+              <div
+                className={`text-xs ${
+                  QUALITY_COLORS[formFeedback.quality].text
+                } opacity-90`}
+              >
+                {formFeedback.feedback}
+              </div>
+
+              {/* Corrections */}
+              {formFeedback.corrections.length > 0 && (
+                <div className="space-y-1.5">
+                  <div
+                    className={`text-xs font-semibold ${
+                      QUALITY_COLORS[formFeedback.quality].text
+                    }`}
+                  >
+                    Corrections:
+                  </div>
+                  <ul className="space-y-1">
+                    {formFeedback.corrections.map((correction, index) => (
+                      <li
+                        key={index}
+                        className={`text-xs ${
+                          QUALITY_COLORS[formFeedback.quality].text
+                        } opacity-90 flex items-start`}
+                      >
+                        <span className="mr-2">•</span>
+                        <span className="flex-1">{correction}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </motion.div>
     </AnimatePresence>
   );

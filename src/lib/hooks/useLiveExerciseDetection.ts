@@ -1,46 +1,47 @@
 import { useState, useEffect, useRef } from "react";
 import { detectExercise } from "@/lib/api/visionModel";
 import { useFrameCapture } from "@/lib/hooks/useFrameCapture";
-import type { ExerciseType, ConfidenceLevel } from "@/types/exercise";
+import type { FormFeedback, ExerciseType } from "@/types/exercise";
 
 interface UseLiveExerciseDetectionReturn {
-  detectedExercise: ExerciseType | null;
-  confidence: ConfidenceLevel | null;
+  formFeedback: FormFeedback | null;
   isDetecting: boolean;
   error: string | null;
 }
 
-const DETECTION_INTERVAL = 2000; // 2 seconds between detections
-const CACHE_DURATION = 4000; // Cache results for 4 seconds
+const DETECTION_INTERVAL = 10000; // 10 seconds between detections (to stay under 10 req/min limit)
+const CACHE_DURATION = 12000; // Cache results for 12 seconds
+const MAX_RETRY_DELAY = 60000; // Maximum retry delay of 60 seconds
+const CAPTURE_DURATION = 6000; // Capture frames over 6 seconds (enough for a full rep)
+const FRAME_COUNT = 10; // Number of frames to capture (10 frames over 6 seconds = ~1.67 FPS)
 
 /**
  * Hook for live exercise detection from video stream
  * @param videoElement - The HTML video element to analyze
  * @param enabled - Whether detection is enabled
+ * @param exerciseType - The type of exercise to analyze
  * @returns Detection state and results
  */
 export function useLiveExerciseDetection(
   videoElement: HTMLVideoElement | null,
-  enabled: boolean
+  enabled: boolean,
+  exerciseType: ExerciseType = "overhead_press"
 ): UseLiveExerciseDetectionReturn {
-  const [detectedExercise, setDetectedExercise] = useState<ExerciseType | null>(
-    null
-  );
-  const [confidence, setConfidence] = useState<ConfidenceLevel | null>(null);
+  const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { captureFrame } = useFrameCapture(videoElement);
+  const { captureFrameSequence } = useFrameCapture(videoElement);
 
   // Refs for managing detection lifecycle
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastDetectionTimeRef = useRef<number>(0);
   const cachedResultRef = useRef<{
-    exercise: ExerciseType;
-    confidence: ConfidenceLevel;
+    formFeedback: FormFeedback;
     timestamp: number;
   } | null>(null);
-  const retryCountRef = useRef<number>(0);
+  const retryDelayRef = useRef<number>(0);
+  const rateLimitUntilRef = useRef<number>(0);
 
   useEffect(() => {
     // Validate API key on initialization
@@ -65,8 +66,18 @@ export function useLiveExerciseDetection(
     const runDetection = async () => {
       const now = Date.now();
 
+      // Check if we're in a rate limit cooldown period
+      if (rateLimitUntilRef.current > now) {
+        const remainingSeconds = Math.ceil(
+          (rateLimitUntilRef.current - now) / 1000
+        );
+        setError(`Rate limit reached. Retry in ${remainingSeconds}s`);
+        return;
+      }
+
       // Throttle: ensure minimum time between detections
-      if (now - lastDetectionTimeRef.current < DETECTION_INTERVAL) {
+      const effectiveInterval = DETECTION_INTERVAL + retryDelayRef.current;
+      if (now - lastDetectionTimeRef.current < effectiveInterval) {
         return;
       }
 
@@ -75,8 +86,7 @@ export function useLiveExerciseDetection(
         const cacheAge = now - cachedResultRef.current.timestamp;
         if (cacheAge < CACHE_DURATION) {
           // Use cached result
-          setDetectedExercise(cachedResultRef.current.exercise);
-          setConfidence(cachedResultRef.current.confidence);
+          setFormFeedback(cachedResultRef.current.formFeedback);
           return;
         }
       }
@@ -85,30 +95,33 @@ export function useLiveExerciseDetection(
       setError(null);
 
       try {
-        // Capture frame
-        const frame = await captureFrame();
+        // Capture sequence of frames over time to analyze movement
+        const frames = await captureFrameSequence(
+          CAPTURE_DURATION,
+          FRAME_COUNT
+        );
 
-        if (!frame) {
+        if (frames.length === 0) {
           setIsDetecting(false);
+          setError("Failed to capture video frames");
           return;
         }
 
-        // Call Vision Language Model API
-        const result = await detectExercise(frame);
+        // Call Vision Language Model API with frame sequence
+        const result = await detectExercise(frames, exerciseType);
 
         // Update state
-        setDetectedExercise(result.exercise);
-        setConfidence(result.confidence);
+        setFormFeedback(result.formFeedback);
 
         // Cache result
         cachedResultRef.current = {
-          exercise: result.exercise,
-          confidence: result.confidence,
+          formFeedback: result.formFeedback,
           timestamp: now,
         };
 
-        // Reset retry count on success
-        retryCountRef.current = 0;
+        // Reset retry delay on success
+        retryDelayRef.current = 0;
+        rateLimitUntilRef.current = 0;
         lastDetectionTimeRef.current = now;
       } catch (err) {
         console.error("Detection error:", err);
@@ -116,18 +129,21 @@ export function useLiveExerciseDetection(
         const errorMessage =
           err instanceof Error ? err.message : "Detection failed";
 
-        // Retry logic
-        if (retryCountRef.current < 1 && !errorMessage.includes("paused")) {
-          retryCountRef.current++;
-          setError("Detection failed, retrying...");
-          // Will retry on next interval
+        // Handle rate limit errors with exponential backoff
+        if (errorMessage.includes("quota") || errorMessage.includes("paused")) {
+          // Extract retry delay from error if available, otherwise use exponential backoff
+          const retryMatch = errorMessage.match(/retry in (\d+(?:\.\d+)?)/i);
+          const retrySeconds = retryMatch ? parseFloat(retryMatch[1]) : 60;
+
+          rateLimitUntilRef.current = now + retrySeconds * 1000;
+          setError(`Rate limit reached. Retry in ${Math.ceil(retrySeconds)}s`);
         } else {
-          setError(
-            errorMessage.includes("paused")
-              ? "Detection paused, try again soon"
-              : "Detection unavailable"
+          // For other errors, use exponential backoff
+          retryDelayRef.current = Math.min(
+            retryDelayRef.current + 5000,
+            MAX_RETRY_DELAY
           );
-          retryCountRef.current = 0;
+          setError(errorMessage || "Detection unavailable");
         }
 
         lastDetectionTimeRef.current = now;
@@ -149,11 +165,10 @@ export function useLiveExerciseDetection(
         intervalRef.current = null;
       }
     };
-  }, [videoElement, enabled, captureFrame]);
+  }, [videoElement, enabled, exerciseType, captureFrameSequence]);
 
   return {
-    detectedExercise,
-    confidence,
+    formFeedback,
     isDetecting,
     error,
   };
