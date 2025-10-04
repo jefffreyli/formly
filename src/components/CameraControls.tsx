@@ -8,10 +8,10 @@ export function CameraControls({
   className = "",
 }: CameraControlsProps) {
   return (
-    <div className={`fixed top-6 right-6 z-10 ${className}`}>
+    <div className={`fixed bottom-6 right-6 z-10 ${className}`}>
       <button
         onClick={onStopCamera}
-        className="group flex items-center justify-center w-12 h-12 bg-white/90 hover:bg-white text-foreground-primary rounded-full shadow-formly hover:shadow-formly-lg transition-all duration-200 backdrop-blur-sm"
+        className="group flex items-center space-x-2 px-4 py-3 bg-white/90 hover:bg-white text-foreground-primary rounded-full shadow-formly hover:shadow-formly-lg transition-all duration-200 backdrop-blur-sm"
         aria-label="Stop camera"
       >
         <svg
@@ -33,6 +33,7 @@ export function CameraControls({
             d="M9 10h6v4H9z"
           />
         </svg>
+        <span className="text-sm font-medium">Stop</span>
       </button>
     </div>
   );
