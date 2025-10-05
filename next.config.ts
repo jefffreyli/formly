@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
       // Fix for @mediapipe/pose missing export
       config.resolve.alias = {
         ...config.resolve.alias,
-        '@mediapipe/pose': false,
+        "@mediapipe/pose": false,
       };
 
       config.resolve.fallback = {
@@ -20,10 +20,11 @@ const nextConfig: NextConfig = {
   },
   // Transpile TensorFlow.js packages
   transpilePackages: [
-    '@tensorflow/tfjs',
-    '@tensorflow/tfjs-core',
-    '@tensorflow/tfjs-backend-webgl',
-    '@tensorflow-models/pose-detection',
+    "@tensorflow/tfjs",
+    "@tensorflow/tfjs-core",
+    "@tensorflow/tfjs-backend-webgl",
+    "@tensorflow-models/pose-detection",
+    "ably",
   ],
 };
 

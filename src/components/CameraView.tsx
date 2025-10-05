@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from "react";
 import { usePoseExerciseDetection } from "@/lib/hooks/usePoseExerciseDetection";
-import { useVideoStream } from "@/lib/hooks/useVideoStream";
+import { useLiveKitStream } from "@/lib/hooks/useLiveKitStream";
 import { usePoseDetection } from "@/hooks/usePoseDetection";
 import { getOrCreateSessionId } from "@/lib/api/sessionService";
 import { ExerciseDetectionOverlay } from "@/components/camera/ExerciseDetectionOverlay";
@@ -60,18 +60,14 @@ export function CameraView({
       selectedExercise
     );
 
-  // Video streaming hook - automatically streams when camera is active
+  // LiveKit video streaming hook - WebRTC-based real-time A/V streaming
   const {
     isStreaming,
     streamError,
-    frameCount,
-    currentFPS,
+    connectionState,
     startStream,
     stopStream,
-  } = useVideoStream(videoRef.current, sessionId, {
-    fps: 15,
-    quality: 70,
-  });
+  } = useLiveKitStream(stream, sessionId);
 
   // Get the exercise name for display
   const exerciseName =
@@ -83,14 +79,14 @@ export function CameraView({
       videoRef.current.srcObject = stream;
       addLog("success", "Camera", "Camera stream connected");
 
-      // Auto-start streaming when camera is active
+      // Auto-start LiveKit streaming when camera is active
       if (!isStreaming) {
-        addLog("info", "Stream", "Starting video stream...");
+        addLog("info", "LiveKit", "Starting WebRTC stream...");
         startStream();
       }
     } else if (!stream && isStreaming) {
-      // Stop streaming when camera is turned off
-      addLog("info", "Stream", "Stopping video stream");
+      // Stop LiveKit streaming when camera is turned off
+      addLog("info", "LiveKit", "Stopping WebRTC stream");
       stopStream();
     }
   }, [stream, isStreaming, startStream, stopStream]);
@@ -185,9 +181,13 @@ export function CameraView({
                   isStreaming ? "bg-white animate-pulse" : "bg-gray-400"
                 }`}
               />
-              <span className="text-sm">Stream:</span>
+              <span className="text-sm">LiveKit:</span>
               <span className="text-sm font-semibold">
-                {isStreaming ? "LIVE" : "OFF"}
+                {connectionState === "connected"
+                  ? "LIVE"
+                  : connectionState === "reconnecting"
+                  ? "RECONNECTING"
+                  : "OFF"}
               </span>
             </button>
 
