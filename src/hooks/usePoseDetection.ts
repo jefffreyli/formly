@@ -1,64 +1,290 @@
-import { useState, useEffect } from "react";
+"use client";
 
-interface PosePoint {
+import { useState, useEffect, useRef, useCallback } from "react";
+import * as poseDetection from "@tensorflow-models/pose-detection";
+import * as tf from "@tensorflow/tfjs-core";
+import "@tensorflow/tfjs-backend-webgl";
+import { createLogger } from "@/lib/utils/logger";
+
+const logger = createLogger("PoseDetection");
+
+// Define Pose interface based on TensorFlow.js pose detection output
+// Following the official TensorFlow.js repository patterns
+interface Keypoint {
   x: number;
   y: number;
-  confidence: number;
+  score: number;
+  name?: string;
 }
 
-interface PoseSkeleton {
-  keypoints: PosePoint[];
-  // TODO: Add more detailed pose structure as needed
+interface Pose {
+  keypoints: Keypoint[];
+  score: number;
+  keypoints3D?: Keypoint[];
+  segmentation?: {
+    maskValueToLabel: (value: number) => string;
+    mask: any;
+  };
+}
+
+interface PoseDetectionConfig {
+  modelType?: "MoveNet" | "BlazePose" | "PoseNet";
+  enableSmoothing?: boolean;
+  enableSegmentation?: boolean;
+  minPoseScore?: number;
 }
 
 interface PoseDetectionState {
-  skeleton: PoseSkeleton | null;
+  pose: Pose | null;
   isProcessing: boolean;
   error: string | null;
+  fps: number;
+  isInitialized: boolean;
 }
 
 interface PoseDetectionActions {
-  startDetection: () => void;
+  startDetection: () => Promise<void>;
   stopDetection: () => void;
+  reset: () => void;
 }
 
 export type UsePoseDetectionReturn = PoseDetectionState & PoseDetectionActions;
 
-export function usePoseDetection(): UsePoseDetectionReturn {
-  const [skeleton, setSkeleton] = useState<PoseSkeleton | null>(null);
+/**
+ * Hook for real-time pose detection using TensorFlow.js
+ * Based on official TensorFlow.js repository patterns
+ * @param videoElement - The video element to analyze
+ * @param enabled - Whether detection is enabled
+ * @param config - Configuration options for pose detection
+ */
+export function usePoseDetection(
+  videoElement: HTMLVideoElement | null,
+  enabled: boolean,
+  config: PoseDetectionConfig = {}
+): UsePoseDetectionReturn {
+  const {
+    modelType = "MoveNet",
+    enableSmoothing = true,
+    enableSegmentation = false,
+    minPoseScore = 0.25,
+  } = config;
+
+  const [pose, setPose] = useState<Pose | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fps, setFps] = useState(0);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  const startDetection = () => {
+  const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const fpsCounterRef = useRef({ frames: 0, lastTime: Date.now() });
+
+  /**
+   * Load and initialize the pose detection model
+   * Following TensorFlow.js repository patterns
+   */
+  const loadModel =
+    useCallback(async (): Promise<poseDetection.PoseDetector> => {
+      logger.info("Initializing TensorFlow.js backend");
+      // Initialize TensorFlow.js backend
+      await tf.ready();
+
+      // Set backend to webgl (more widely supported than webgpu)
+      await tf.setBackend('webgl');
+      logger.info("TensorFlow.js backend ready", { backend: "webgl" });
+
+      let detector: poseDetection.PoseDetector;
+
+      logger.info("Loading pose detection model", {
+        model: modelType,
+        enableSmoothing,
+        minPoseScore,
+      });
+
+      switch (modelType) {
+        case "MoveNet":
+          detector = await poseDetection.createDetector(
+            poseDetection.SupportedModels.MoveNet,
+            {
+              modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+              enableSmoothing,
+              minPoseScore,
+            }
+          );
+          break;
+
+        case "BlazePose":
+          detector = await poseDetection.createDetector(
+            poseDetection.SupportedModels.BlazePose,
+            {
+              runtime: "tfjs",
+              enableSmoothing,
+              enableSegmentation,
+              modelType: "full",
+            }
+          );
+          break;
+
+        case "PoseNet":
+          detector = await poseDetection.createDetector(
+            poseDetection.SupportedModels.PoseNet,
+            {
+              architecture: "MobileNetV1",
+              outputStride: 16,
+              inputResolution: { width: 257, height: 257 },
+              multiplier: 0.75,
+            }
+          );
+          break;
+
+        default:
+          throw new Error(`Unsupported model type: ${modelType}`);
+      }
+
+      logger.info("Pose detection model loaded successfully");
+
+      return detector;
+    }, [modelType, enableSmoothing, enableSegmentation, minPoseScore]);
+
+  /**
+   * Initialize the pose detection model
+   */
+  const startDetection = useCallback(async () => {
+    if (!videoElement) {
+      setError("No video element provided");
+      return;
+    }
+
+    if (detectorRef.current) {
+      console.log("Detector already initialized");
+      return;
+    }
+
     setIsProcessing(true);
     setError(null);
 
-    // TODO: Initialize TensorFlow.js pose detection model
-    // TODO: Set up video processing pipeline
-    // TODO: Implement pose estimation logic
-    console.log("Pose detection started - TODO: implement actual detection");
-  };
+    try {
+      console.log(`Initializing ${modelType} detector...`);
 
-  const stopDetection = () => {
+      // Load model based on configuration
+      const detector = await loadModel();
+      detectorRef.current = detector;
+
+      console.log(`✓ ${modelType} detector initialized`);
+      setIsInitialized(true);
+
+      // Start detection loop
+      detectPose();
+    } catch (err) {
+      console.error("Failed to initialize pose detector:", err);
+      setError(
+        `Failed to load ${modelType} model: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`
+      );
+      setIsProcessing(false);
+    }
+  }, [videoElement, modelType, loadModel]);
+
+  /**
+   * Main pose detection loop
+   */
+  const detectPose = useCallback(async () => {
+    if (!detectorRef.current || !videoElement || !enabled) {
+      return;
+    }
+
+    try {
+      // Check if video is ready
+      if (videoElement.readyState < 2) {
+        animationFrameRef.current = requestAnimationFrame(detectPose);
+        return;
+      }
+
+      // Detect pose
+      const poses = await detectorRef.current.estimatePoses(videoElement, {
+        flipHorizontal: false,
+      });
+
+      // Update pose state
+      if (poses && poses.length > 0) {
+        setPose(poses[0] as Pose);
+        setError(null);
+      } else {
+        setPose(null);
+      }
+
+      // Update FPS counter
+      fpsCounterRef.current.frames++;
+      const now = Date.now();
+      const elapsed = now - fpsCounterRef.current.lastTime;
+
+      if (elapsed >= 1000) {
+        setFps(Math.round((fpsCounterRef.current.frames * 1000) / elapsed));
+        fpsCounterRef.current.frames = 0;
+        fpsCounterRef.current.lastTime = now;
+      }
+
+      // Continue loop
+      animationFrameRef.current = requestAnimationFrame(detectPose);
+    } catch (err) {
+      console.error("Pose detection error:", err);
+      setError("Pose detection failed");
+      // Continue loop even on error
+      animationFrameRef.current = requestAnimationFrame(detectPose);
+    }
+  }, [videoElement, enabled]);
+
+  /**
+   * Stop pose detection and cleanup
+   */
+  const stopDetection = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (detectorRef.current) {
+      detectorRef.current.dispose();
+      detectorRef.current = null;
+    }
+
+    setPose(null);
     setIsProcessing(false);
-    setSkeleton(null);
+    setFps(0);
+    setIsInitialized(false);
+    console.log("Pose detection stopped");
+  }, []);
+
+  /**
+   * Reset pose detection state
+   */
+  const reset = useCallback(() => {
+    stopDetection();
     setError(null);
+  }, [stopDetection]);
 
-    // TODO: Clean up TensorFlow.js resources
-    // TODO: Stop video processing
-    console.log("Pose detection stopped - TODO: cleanup resources");
-  };
+  // Auto-start/stop detection based on enabled state
+  useEffect(() => {
+    if (enabled && videoElement) {
+      startDetection();
+    } else {
+      stopDetection();
+    }
 
-  // TODO: Add useEffect for continuous pose processing when camera is active
-  // TODO: Implement actual pose detection using TensorFlow.js
-  // TODO: Add pose correction logic
-  // TODO: Add real-time feedback system
+    return () => {
+      stopDetection();
+    };
+  }, [enabled, videoElement, startDetection, stopDetection]);
 
   return {
-    skeleton,
+    pose,
     isProcessing,
     error,
+    fps,
+    isInitialized,
     startDetection,
     stopDetection,
+    reset,
   };
 }

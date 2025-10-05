@@ -1,5 +1,8 @@
+"use client";
+
 import { useState, useEffect, useRef } from "react";
 import { useFrameCapture } from "@/lib/hooks/useFrameCapture";
+import { useAudioQueue } from "@/lib/hooks/useAudioQueue";
 import { analyzeVideoToText, textToSpeech } from "@/lib/api/sessionService";
 import { generateSpeechText } from "@/lib/utils/feedbackUtils";
 import type { FormFeedback, ExerciseType } from "@/types/exercise";
@@ -34,8 +37,8 @@ export function useRealtimeExerciseDetection(
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   const { captureFrameSequence } = useFrameCapture(videoElement);
+  const { enqueueAudio, clearQueue } = useAudioQueue();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (!enabled || !videoElement) {
@@ -45,6 +48,7 @@ export function useRealtimeExerciseDetection(
       }
       setIsDetecting(false);
       setError(null);
+      clearQueue(); // Clear audio queue when disabled
       return;
     }
 
@@ -74,24 +78,24 @@ export function useRealtimeExerciseDetection(
           return;
         }
 
-        setFormFeedback(analysisResult.formFeedback);
+        setFormFeedback(analysisResult.formFeedback as FormFeedback);
 
         // Step 3: Convert feedback to speech if performing exercise
         if (analysisResult.formFeedback.isPerformingExercise) {
-          const speechText = generateSpeechText(analysisResult.formFeedback);
+          const speechText = generateSpeechText(
+            analysisResult.formFeedback as FormFeedback
+          );
           const ttsResult = await textToSpeech(speechText);
 
           if (ttsResult.success && ttsResult.audioUrl) {
             setAudioUrl(ttsResult.audioUrl);
 
-            // Auto-play audio
-            if (!audioRef.current) {
-              audioRef.current = new Audio();
-            }
-            audioRef.current.src = ttsResult.audioUrl;
-            audioRef.current.play().catch((err) => {
-              console.error("Failed to play audio:", err);
-            });
+            // Add audio to queue instead of playing immediately
+            enqueueAudio(ttsResult.audioUrl);
+            console.log(
+              "Audio added to queue:",
+              ttsResult.audioUrl.substring(0, 50) + "..."
+            );
           }
         }
       } catch (err) {
@@ -114,12 +118,16 @@ export function useRealtimeExerciseDetection(
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      clearQueue();
     };
-  }, [videoElement, enabled, exerciseType, captureFrameSequence]);
+  }, [
+    videoElement,
+    enabled,
+    exerciseType,
+    captureFrameSequence,
+    enqueueAudio,
+    clearQueue,
+  ]);
 
   return {
     formFeedback,

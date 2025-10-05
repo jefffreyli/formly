@@ -4,6 +4,9 @@ import type {
   FormQuality,
   ExerciseType,
 } from "@/types/exercise";
+import { createLogger } from "@/lib/utils/logger";
+
+const logger = createLogger("VisionModel");
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 
@@ -13,147 +16,251 @@ const VALID_FORM_QUALITIES: FormQuality[] = [
   "poor",
 ];
 
-const OVERHEAD_PRESS_PROMPT = `You are an expert physical therapist analyzing overhead press form. You are viewing a sequence of frames showing the movement over time. Analyze the ENTIRE MOVEMENT PATTERN and provide detailed feedback.
+const OVERHEAD_PRESS_PROMPT = `You're a knowledgeable physical therapist analyzing overhead press form. Be accurate and fair in your feedback.
 
-OVERHEAD PRESS MOVEMENT ANALYSIS:
-The person may be performing overhead press with or WITHOUT weights/dumbbells - both are valid. Focus on body mechanics and form.
+ANALYZE THE POSE KEYPOINT DATA:
+Look at the shoulder, elbow, and wrist positions across the frames to assess the overhead press:
 
-KEY FORM POINTS TO EVALUATE:
-1. Starting Position:
-   - Feet shoulder-width apart, stable base
-   - Core engaged, ready position
-   
-2. Pressing Movement:
-   - Smooth, controlled motion upward
-   - Arms move in a straight vertical path (not forward/backward)
-   - Core remains engaged throughout (no excessive back arch)
-   - Head stays neutral (not jutting forward)
-   - Shoulders stay stable and engaged
-   
-3. Top Position:
-   - Arms fully extended overhead
-   - Elbows locked out at the top
-   - Body remains stable and balanced
-   - Minimal to no back arch
-   
-4. Lowering Movement:
-   - Controlled descent
-   - Maintaining form on the way down
+WHAT TO LOOK FOR (with reasonable margin of error):
+1. OVERHEAD PRESS PATTERN:
+   - Wrists should move UPWARD (decreasing y-values) and end ABOVE shoulders
+   - Elbows should be roughly aligned with or slightly in front of shoulders
+   - If wrists move FORWARD (bicep curl) or SIDEWAYS (lateral raise) → WRONG EXERCISE
 
-Analyze the sequence of frames to see if they're performing the full range of motion correctly.
+2. ARM PATH (allow ~20-30 pixel variation):
+   - Wrists should stay relatively vertical as they press up
+   - Small deviations are OK - don't need to be perfectly straight
+   - Major horizontal movement (>50 pixels) suggests wrong path
 
-Respond with a JSON object in this EXACT format:
+3. SHOULDER POSITION:
+   - Shoulders should be reasonably stable (allow some natural movement)
+   - Don't need to be perfectly still - some variation is normal
+   - Look for general stability, not perfection
+
+4. RANGE OF MOTION:
+   - Wrists should end significantly higher than shoulders (fully overhead)
+   - Full lockout is ideal but not required for "good" rating
+
+RATING GUIDELINES:
+- If they're doing a DIFFERENT exercise (bicep curl, lateral raise, etc.) → isPerformingExercise: false, quality: "poor"
+- If arm movement shows upward pressing pattern with reasonable form → quality: "good"
+- If pressing overhead but with noticeable form issues → quality: "needs_improvement"
+- If form has serious upper body safety concerns or completely wrong movement → quality: "poor"
+- Be accurate but fair - allow reasonable variation in human movement
+- IGNORE lower body and hips - focus only on shoulders, elbows, wrists
+
+FEEDBACK STYLE:
+- Use "you/your" (not "the person")
+- Be encouraging but honest
+- Keep feedback to ONE SHORT SENTENCE ONLY (max 8 words)
+- Give 2-3 specific, actionable tips about ARMS AND SHOULDERS
+- Be accurate - call out wrong exercises, but encourage correct ones
+
+Respond with JSON in this EXACT format:
 {
   "isPerformingExercise": true/false,
   "quality": "good/needs_improvement/poor",
-  "feedback": "Brief overall movement assessment in 1-2 sentences",
-  "corrections": ["specific correction 1", "specific correction 2", "..."]
+  "feedback": "One ultra-short sentence (max 8 words)",
+  "corrections": ["Do this", "Try that", "Focus on this"]
 }
 
-If the person is NOT performing an overhead press at all, set isPerformingExercise to false.
-
-Example response:
-{
-  "isPerformingExercise": true,
-  "quality": "needs_improvement",
-  "feedback": "Good arm extension but excessive back arch during the press. Movement path is mostly vertical.",
-  "corrections": ["Engage your core more to prevent lower back arch", "Keep your ribcage down throughout the movement", "Slow down the descent for better control"]
-}`;
-
-const EXTERNAL_ROTATION_PROMPT = `CRITICAL IDENTIFICATION: You are analyzing EXTERNAL ROTATION exercise, NOT bicep curls.
-
-BEFORE YOU ANALYZE - READ THIS FIRST:
-====================================
-EXTERNAL ROTATION (what you're looking for):
-- Elbow STAYS AT SIDE of body throughout (fixed position, pinned to ribs)
-- Upper arm DOES NOT MOVE
-- ONLY the forearm rotates away from body (outward/upward rotation)
-- Forearm moves in an arc from front → side → up
-- Elbow angle stays ~90 degrees (does NOT change)
-- Movement is ROTATION at shoulder, not flexion
-
-BICEP CURL (what this is NOT):
-- Elbow MOVES FORWARD and UP away from body
-- Forearm moves toward shoulder
-- Elbow angle DECREASES (gets smaller/tighter)
-- Movement is FLEXION at elbow, not rotation
-
-KEY RULE: If the elbow is staying near the side of the body = EXTERNAL ROTATION (even if imperfect)
-If the elbow is moving forward/up toward shoulder = Bicep curl
-
-====================================
-
-You are analyzing EXTERNAL ROTATION form - a rotator cuff exercise. The person rotates their forearm outward while keeping their elbow pinned at their side.
-
-CORRECT MOVEMENT PATTERN FOR EXTERNAL ROTATION:
-- Starting: Elbow bent 90°, upper arm against side, forearm pointing forward
-- During: Forearm rotates OUTWARD and UPWARD like opening a door
-- Key: Elbow stays glued to side of body, upper arm does not move
-- End: Forearm pointing outward/upward, elbow STILL at side
-- Return: Controlled lowering back to start
-
-ANALYSIS CHECKLIST (Check in this order):
-1. ✓ Is the ELBOW staying near/at the side of the body? 
-   → YES = External Rotation (continue analysis)
-   → NO (elbow moving up/forward) = Not external rotation
-
-2. ✓ Is the UPPER ARM staying still against the body?
-   → YES = Good
-   → NO = Needs correction, but still external rotation
-
-3. ✓ Is the FOREARM rotating outward (away from body)?
-   → YES = Correct movement
-   → NO = Needs coaching
-
-4. ✓ Is the shoulder staying DOWN (not shrugging)?
-   → YES = Good
-   → NO = Needs correction
-
-FORM POINTS TO EVALUATE:
-- Elbow Position: Must stay at side (most critical)
-- Upper Arm: Should not move away from body
-- Rotation: Forearm rotating outward, not lifting
-- Shoulder: Relaxed and down, not shrugged
-- Control: Smooth, controlled movement
-- Posture: Upright, not slouching
-
-IMPORTANT REMINDERS:
-- If elbow is at/near side of body = This IS external rotation (even if form needs work)
-- Small movement is normal - this targets small rotator cuff muscles
-- Be ENCOURAGING - recognize the attempt if they're doing external rotation
-
-Common Issues (give constructive feedback):
-- Elbow drifting away from side (cue: "Keep elbow at your side")
-- Shoulder hiking up (cue: "Relax your shoulder down")
-- Moving too quickly (cue: "Slow and controlled")
-- Trunk rotation (cue: "Keep torso still")
-
-RESPOND with a JSON object in this EXACT format:
-{
-  "isPerformingExercise": true/false,
-  "quality": "good/needs_improvement/poor",
-  "feedback": "Brief overall movement assessment in 1-2 sentences",
-  "corrections": ["specific correction 1", "specific correction 2", "..."]
-}
-
-CRITICAL: If elbow is at/near the side of body and forearm is moving → set isPerformingExercise = TRUE (this is external rotation, not bicep curl)
-
-Example responses:
-
-Good form:
+GOOD form example (for solid pressing technique):
 {
   "isPerformingExercise": true,
   "quality": "good",
-  "feedback": "Excellent elbow position staying at your side. Smooth rotation with good control.",
-  "corrections": ["Nice work! Maybe pause at the top for a second"]
+  "feedback": "Great press, keep it up!",
+  "corrections": ["Nice vertical path!", "Shoulders look stable", "Great control!"]
 }
 
-Needs improvement but IS doing the exercise:
+NEEDS IMPROVEMENT example (for minor arm/shoulder issues):
 {
   "isPerformingExercise": true,
-  "quality": "needs_improvement", 
-  "feedback": "Good attempt at external rotation. Elbow is mostly at your side which is correct.",
-  "corrections": ["Keep elbow tucked closer to your side", "Relax your shoulder down", "Move a bit slower"]
+  "quality": "needs_improvement",
+  "feedback": "Press more straight up.",
+  "corrections": ["Keep arms vertical", "Don't press forward", "Full lockout overhead"]
+}
+
+POOR form example (for wrong exercise or safety issues):
+{
+  "isPerformingExercise": false,
+  "quality": "poor",
+  "feedback": "This isn't an overhead press.",
+  "corrections": ["Press straight up overhead", "Keep weight above your head", "This is a different exercise"]
+}`;
+
+const SIDE_LATERAL_RAISE_PROMPT = `You're a knowledgeable physical therapist analyzing side lateral raise form. Be accurate and fair in your feedback.
+
+ANALYZE THE MOVEMENT:
+Watch how they raise their arms to the sides - check for:
+- Are they actually doing a SIDE LATERAL RAISE (arms out to the SIDES, not front)?
+- Arms moving out to sides (not forward/back)
+- Slight elbow bend maintained
+- Leading with elbows, not hands
+- No shoulder shrugging
+- Controlled movement, no swinging
+
+RATING GUIDELINES:
+- If they're doing a DIFFERENT exercise (front raise, overhead press, etc.) → isPerformingExercise: false, quality: "poor"
+- If form is solid with good technique → quality: "good"
+- If form has some issues but is mostly correct → quality: "needs_improvement"
+- If form has serious safety concerns or completely wrong movement → quality: "poor"
+- Be accurate but fair - recognize good effort when they're doing the right exercise
+
+FEEDBACK STYLE:
+- Use "you/your" (not "the person")
+- Be encouraging but honest
+- Keep feedback to ONE SHORT SENTENCE ONLY (max 8 words)
+- Give 2-3 specific, actionable tips
+- Be accurate - call out wrong exercises, but encourage correct ones
+
+Respond with JSON in this EXACT format:
+{
+  "isPerformingExercise": true/false,
+  "quality": "good/needs_improvement/poor",
+  "feedback": "One ultra-short sentence (max 8 words)",
+  "corrections": ["Do this", "Try that", "Focus on this"]
+}
+
+GOOD form example (for solid technique):
+{
+  "isPerformingExercise": true,
+  "quality": "good",
+  "feedback": "Nice lateral raise form!",
+  "corrections": ["Keep those shoulders relaxed", "Great control!"]
+}
+
+NEEDS IMPROVEMENT example (for minor issues):
+{
+  "isPerformingExercise": true,
+  "quality": "needs_improvement",
+  "feedback": "Watch that shoulder shrug.",
+  "corrections": ["Relax your shoulders down", "Lead with your elbows", "Keep it smooth"]
+}
+
+POOR form example (for wrong exercise or safety issues):
+{
+  "isPerformingExercise": false,
+  "quality": "poor",
+  "feedback": "This isn't a lateral raise.",
+  "corrections": ["Raise arms out to the sides", "Not forward or overhead", "This is a different exercise"]
+}`;
+
+const FRONT_LATERAL_RAISE_PROMPT = `You're a knowledgeable physical therapist analyzing front lateral raise form. Be accurate and fair in your feedback.
+
+ANALYZE THE MOVEMENT:
+Watch how they raise their arms forward - check for:
+- Are they actually doing a FRONT LATERAL RAISE (arms straight FORWARD, not to sides)?
+- Arms moving straight forward
+- Slight elbow bend maintained
+- No backward lean or momentum
+- Shoulders down (not shrugged)
+- Lifting symmetrically
+
+RATING GUIDELINES:
+- If they're doing a DIFFERENT exercise (side raise, overhead press, etc.) → isPerformingExercise: false, quality: "poor"
+- If form is solid with good technique → quality: "good"
+- If form has some issues but is mostly correct → quality: "needs_improvement"
+- If form has serious safety concerns or completely wrong movement → quality: "poor"
+- Be accurate but fair - recognize good effort when they're doing the right exercise
+
+FEEDBACK STYLE:
+- Use "you/your" (not "the person")
+- Be encouraging but honest
+- Keep feedback to ONE SHORT SENTENCE ONLY (max 8 words)
+- Give 2-3 specific, actionable tips
+- Be accurate - call out wrong exercises, but encourage correct ones
+
+Respond with JSON in this EXACT format:
+{
+  "isPerformingExercise": true/false,
+  "quality": "good/needs_improvement/poor",
+  "feedback": "One ultra-short sentence (max 8 words)",
+  "corrections": ["Do this", "Try that", "Focus on this"]
+}
+
+GOOD form example (for solid technique):
+{
+  "isPerformingExercise": true,
+  "quality": "good",
+  "feedback": "Nice front raise form!",
+  "corrections": ["Keep that control", "Great technique!"]
+}
+
+NEEDS IMPROVEMENT example (for minor issues):
+{
+  "isPerformingExercise": true,
+  "quality": "needs_improvement",
+  "feedback": "Keep your torso more still.",
+  "corrections": ["Avoid leaning back", "Stand tall", "Control the descent"]
+}
+
+POOR form example (for wrong exercise or safety issues):
+{
+  "isPerformingExercise": false,
+  "quality": "poor",
+  "feedback": "This isn't a front raise.",
+  "corrections": ["Raise arms straight forward", "Not to the sides", "This is a different exercise"]
+}`;
+
+const EXTERNAL_ROTATION_PROMPT = `You're a knowledgeable physical therapist analyzing external rotation form. Be accurate and fair in your feedback.
+
+CRITICAL: This is EXTERNAL ROTATION, not bicep curls!
+- Elbow STAYS at side of body (pinned to ribs)
+- Only forearm rotates outward
+- If elbow stays at side = external rotation ✓
+- If elbow moves forward/up = NOT this exercise ✗
+
+ANALYZE THE MOVEMENT:
+- Are they actually doing EXTERNAL ROTATION (elbow pinned at side, only forearm rotates)?
+- Is elbow staying at their side?
+- Is forearm rotating outward?
+- Is shoulder staying down?
+- Is movement controlled?
+
+RATING GUIDELINES:
+- If they're doing a DIFFERENT exercise (bicep curl, lateral raise, etc.) → isPerformingExercise: false, quality: "poor"
+- If elbow stays at side with good rotation → quality: "good"
+- If elbow drifts slightly but mostly correct → quality: "needs_improvement"
+- If elbow completely away from body (bicep curl motion) → isPerformingExercise: false, quality: "poor"
+- Be accurate but fair - this exercise is specific but recognize good effort
+
+FEEDBACK STYLE:
+- Use "you/your" (not "the person")
+- Be encouraging but honest
+- Keep feedback to ONE SHORT SENTENCE ONLY (max 8 words)
+- Give 2-3 specific, actionable tips
+- Be accurate - call out wrong exercises, but encourage correct ones
+
+Respond with JSON in this EXACT format:
+{
+  "isPerformingExercise": true/false,
+  "quality": "good/needs_improvement/poor",
+  "feedback": "One ultra-short sentence (max 8 words)",
+  "corrections": ["Do this", "Try that", "Focus on this"]
+}
+
+GOOD form example (for solid technique):
+{
+  "isPerformingExercise": true,
+  "quality": "good",
+  "feedback": "Great external rotation!",
+  "corrections": ["Keep that control", "Elbow stays pinned!"]
+}
+
+NEEDS IMPROVEMENT example (for minor elbow drift):
+{
+  "isPerformingExercise": true,
+  "quality": "needs_improvement",
+  "feedback": "Pin that elbow tighter.",
+  "corrections": ["Press your elbow to your side", "Relax your shoulder", "Slow and steady"]
+}
+
+POOR form example (for wrong exercise):
+{
+  "isPerformingExercise": false,
+  "quality": "poor",
+  "feedback": "This isn't external rotation.",
+  "corrections": ["Keep elbow at your side", "Only rotate your forearm", "This is a bicep curl"]
 }`;
 
 /**
@@ -165,19 +272,32 @@ function getExercisePrompt(exerciseType: ExerciseType): string {
       return OVERHEAD_PRESS_PROMPT;
     case "external_rotation":
       return EXTERNAL_ROTATION_PROMPT;
+    case "side_lateral_raise":
+      return SIDE_LATERAL_RAISE_PROMPT;
+    case "front_lateral_raise":
+      return FRONT_LATERAL_RAISE_PROMPT;
     default:
       return OVERHEAD_PRESS_PROMPT;
   }
 }
 
 /**
- * Analyzes exercise form in video frames using Gemini Vision API
- * @param videoFrames - Array of base64-encoded JPEG images (sequence of frames)
+ * Analyzes exercise form using pose keypoints (FAST - no images needed!)
+ * @param poseSequence - Array of pose snapshots with keypoint data
  * @param exerciseType - The type of exercise to analyze
  * @returns Promise resolving to form feedback result
  */
-export async function detectExercise(
-  videoFrames: string | string[],
+export async function detectExerciseFromPose(
+  poseSequence: Array<{
+    timestamp: number;
+    keypoints: Array<{
+      x: number;
+      y: number;
+      score: number;
+      name?: string;
+    }>;
+    score: number;
+  }>,
   exerciseType: ExerciseType = "overhead_press"
 ): Promise<ExerciseDetectionResult> {
   // Validate API key exists
@@ -188,62 +308,68 @@ export async function detectExercise(
     );
   }
 
-  // Convert single frame to array for consistent handling
-  const frames = Array.isArray(videoFrames) ? videoFrames : [videoFrames];
-
-  if (frames.length === 0) {
-    throw new Error("No video frames provided");
+  if (poseSequence.length === 0) {
+    throw new Error("No pose data provided");
   }
+
+  const startTime = Date.now();
 
   try {
     // Initialize Google GenAI client
     const ai = new GoogleGenAI({ apiKey });
 
-    // Build parts array with all frames followed by the prompt
-    const parts = [
-      ...frames.map((frame, index) => ({
-        inlineData: {
-          mimeType: "image/jpeg" as const,
-          data: frame,
-        },
-      })),
-      {
-        text:
-          frames.length > 1
-            ? `${getExercisePrompt(exerciseType)}\n\nNote: You are viewing ${
-                frames.length
-              } frames captured over 6 seconds showing a COMPLETE REPETITION of the exercise in chronological order. Analyze the full movement from start to finish.`
-            : getExercisePrompt(exerciseType),
-      },
-    ];
+    // Format pose data as text for Gemini
+    const poseDataText = formatPoseSequenceForAnalysis(poseSequence);
+    const fullPrompt = `${getExercisePrompt(
+      exerciseType
+    )}\n\nPOSE KEYPOINT DATA:\n${poseDataText}`;
 
-    // Generate content with images and text prompt
-    const response = await ai.models.generateContent({
+    logger.debug("Full Prompt", {
+      prompt: fullPrompt,
+      fullLength: fullPrompt.length,
+    });
+
+    logger.geminiRequest(GEMINI_MODEL, fullPrompt.length, {
+      exerciseType,
+      poseFrames: poseSequence.length,
+      method: "pose-keypoints",
+    });
+
+    logger.debug("Gemini Prompt", {
+      prompt: fullPrompt.slice(0, 500) + "...",
+      fullLength: fullPrompt.length,
+    });
+
+    // Use streaming for faster time-to-first-token
+    const streamPromise = ai.models.generateContentStream({
       model: GEMINI_MODEL,
       contents: [
         {
-          parts,
+          parts: [
+            {
+              text: fullPrompt,
+            },
+          ],
         },
       ],
       config: {
-        temperature: 0.1, // Very low temperature for focused, deterministic responses
-        maxOutputTokens: 250,
-        // Disable thinking mode for faster responses with Flash
+        temperature: 0.3,
+        maxOutputTokens: 200,
         thinkingConfig: {
           thinkingBudget: 0,
         },
       },
     });
 
-    // Extract text from response
-    const responseParts = response?.candidates?.[0]?.content?.parts || [];
+    // Await the promise to get the async generator
+    const stream = await streamPromise;
+
+    // Collect streamed response
     let rawResponse = "";
 
-    for (const part of responseParts) {
-      if (part.text) {
-        rawResponse = part.text;
-        break;
-      }
+    for await (const chunk of stream) {
+      const chunkText = chunk.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      rawResponse += chunkText;
     }
 
     if (!rawResponse) {
@@ -260,6 +386,190 @@ export async function detectExercise(
     };
   } catch (error) {
     console.error("Gemini API error:", error);
+
+    if (error instanceof Error) {
+      if (error.message.includes("API key")) {
+        throw new Error("Invalid API key or permissions");
+      }
+      if (error.message.includes("quota")) {
+        throw new Error("Detection paused, try again soon");
+      }
+      if (error.message.includes("not found")) {
+        throw new Error(
+          "API endpoint not found - check API key and model availability"
+        );
+      }
+      throw error;
+    }
+
+    throw new Error("Detection failed");
+  }
+}
+
+/**
+ * Formats pose sequence data into readable text for Gemini analysis
+ */
+function formatPoseSequenceForAnalysis(
+  poseSequence: Array<{
+    timestamp: number;
+    keypoints: Array<{
+      x: number;
+      y: number;
+      score: number;
+      name?: string;
+    }>;
+    score: number;
+  }>
+): string {
+  const keyJoints = [
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_hip",
+    "right_hip",
+  ];
+
+  let text = `Analyzing ${poseSequence.length} pose frames over ${
+    poseSequence[poseSequence.length - 1].timestamp
+  }ms\n\n`;
+
+  poseSequence.forEach((pose, idx) => {
+    text += `Frame ${idx + 1} (${pose.timestamp}ms):\n`;
+
+    keyJoints.forEach((jointName) => {
+      const joint = pose.keypoints.find((kp) => kp.name === jointName);
+      if (joint && joint.score > 0.3) {
+        text += `  ${jointName}: x=${Math.round(joint.x)}, y=${Math.round(
+          joint.y
+        )}\n`;
+      }
+    });
+
+    text += "\n";
+  });
+
+  return text;
+}
+
+/**
+ * Analyzes exercise form in video frames using Gemini Vision API with streaming
+ * @param videoFrames - Array of base64-encoded JPEG images (sequence of frames)
+ * @param exerciseType - The type of exercise to analyze
+ * @returns Promise resolving to form feedback result
+ */
+export async function detectExercise(
+  videoFrames: string | string[],
+  exerciseType: ExerciseType = "overhead_press"
+): Promise<ExerciseDetectionResult> {
+  const startTime = Date.now();
+
+  // Validate API key exists
+  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "Missing API key. Please add NEXT_PUBLIC_GEMINI_API_KEY to .env.local"
+    );
+  }
+
+  // Convert single frame to array for consistent handling
+  const frames = Array.isArray(videoFrames) ? videoFrames : [videoFrames];
+
+  if (frames.length === 0) {
+    throw new Error("No video frames provided");
+  }
+
+  try {
+    logger.geminiRequest(GEMINI_MODEL, 0, {
+      exerciseType,
+      frameCount: frames.length,
+      method: "video-frames",
+    });
+
+    // Initialize Google GenAI client
+    const ai = new GoogleGenAI({ apiKey });
+
+    // Build parts array with all frames followed by the prompt
+    const parts = [
+      ...frames.map((frame) => ({
+        inlineData: {
+          mimeType: "image/jpeg" as const,
+          data: frame,
+        },
+      })),
+      {
+        text:
+          frames.length > 1
+            ? `${getExercisePrompt(exerciseType)}\n\nYou're viewing ${
+                frames.length
+              } frames over 6 seconds showing one complete rep. Watch the full movement.`
+            : getExercisePrompt(exerciseType),
+      },
+    ];
+
+    // Use streaming for faster time-to-first-token
+    const streamPromise = ai.models.generateContentStream({
+      model: GEMINI_MODEL,
+      contents: [
+        {
+          parts,
+        },
+      ],
+      config: {
+        temperature: 0.3, // Low temperature for consistent, focused feedback
+        maxOutputTokens: 200,
+        // Disable thinking mode for faster responses
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
+      },
+    });
+
+    // Await the promise to get the async generator
+    const stream = await streamPromise;
+
+    // Collect streamed response
+    let rawResponse = "";
+
+    for await (const chunk of stream) {
+      const chunkText = chunk.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      rawResponse += chunkText;
+    }
+
+    const duration = Date.now() - startTime;
+
+    if (!rawResponse) {
+      logger.error("No text found in Gemini response (video frames)");
+      throw new Error("No text response from Gemini API");
+    }
+
+    logger.geminiResponse(GEMINI_MODEL, rawResponse.length, duration, {
+      exerciseType,
+      frameCount: frames.length,
+      responsePreview: rawResponse.slice(0, 200),
+    });
+
+    logger.debug("Full Gemini Response (video)", { response: rawResponse });
+
+    // Parse JSON response
+    const formFeedback = parseFormFeedbackResponse(rawResponse);
+
+    logger.info("Parsed form feedback (video)", {
+      quality: formFeedback.quality,
+      isPerformingExercise: formFeedback.isPerformingExercise,
+    });
+
+    return {
+      formFeedback,
+      rawResponse,
+    };
+  } catch (error) {
+    logger.geminiError(GEMINI_MODEL, error, {
+      exerciseType,
+      frameCount: frames.length,
+    });
 
     if (error instanceof Error) {
       // Handle specific error types
@@ -293,6 +603,11 @@ function parseFormFeedbackResponse(response: string): {
   isPerformingExercise: boolean;
 } {
   try {
+    logger.debug("Parsing form feedback response", {
+      rawLength: response.length,
+      preview: response.slice(0, 100),
+    });
+
     // Clean up response - sometimes the model adds markdown code blocks
     let cleaned = response.trim();
     if (cleaned.startsWith("```json")) {
@@ -311,7 +626,7 @@ function parseFormFeedbackResponse(response: string): {
     const feedback =
       typeof parsed.feedback === "string"
         ? parsed.feedback
-        : "Unable to analyze form from this angle.";
+        : "I can't quite see your form from this angle.";
 
     const corrections = Array.isArray(parsed.corrections)
       ? parsed.corrections.filter((c: unknown) => typeof c === "string")
@@ -322,6 +637,12 @@ function parseFormFeedbackResponse(response: string): {
         ? parsed.isPerformingExercise
         : false;
 
+    logger.debug("Successfully parsed form feedback", {
+      quality,
+      isPerformingExercise,
+      correctionsCount: corrections.length,
+    });
+
     return {
       quality,
       feedback,
@@ -329,13 +650,14 @@ function parseFormFeedbackResponse(response: string): {
       isPerformingExercise,
     };
   } catch (error) {
-    console.error("Failed to parse form feedback:", error, response);
+    logger.error("Failed to parse form feedback", error, {
+      response: response.slice(0, 500),
+    });
     // Return a default response if parsing fails
     return {
       quality: "needs_improvement",
-      feedback:
-        "Unable to analyze form. Please ensure you're visible in the frame.",
-      corrections: ["Position yourself fully in view of the camera"],
+      feedback: "I need a better view - can you adjust your camera?",
+      corrections: ["Make sure you're fully in frame", "Step back a bit"],
       isPerformingExercise: false,
     };
   }

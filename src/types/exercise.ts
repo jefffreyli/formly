@@ -1,4 +1,8 @@
-export type ExerciseType = "overhead_press" | "external_rotation";
+export type ExerciseType =
+  | "overhead_press"
+  | "external_rotation"
+  | "side_lateral_raise"
+  | "front_lateral_raise";
 
 export type FormQuality = "good" | "needs_improvement" | "poor";
 

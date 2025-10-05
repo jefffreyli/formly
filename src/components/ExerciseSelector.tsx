@@ -20,6 +20,16 @@ export const AVAILABLE_EXERCISES: ExerciseInfo[] = [
     name: "Seated Single Arm External Rotation",
     description: "Rotate arm outward while seated",
   },
+  {
+    id: "side_lateral_raise",
+    name: "Side Lateral Raise",
+    description: "Raise arms out to the sides to shoulder height",
+  },
+  {
+    id: "front_lateral_raise",
+    name: "Front Lateral Raise",
+    description: "Raise arms forward to shoulder height",
+  },
 ];
 
 export function ExerciseSelector({
@@ -114,4 +124,3 @@ export function ExerciseSelector({
     </div>
   );
 }
-

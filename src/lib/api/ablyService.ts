@@ -1,4 +1,4 @@
-import Ably from "ably/promises";
+import Ably from "ably";
 import type { FormFeedback } from "@/types/exercise";
 
 interface FeedbackPayload {
@@ -55,7 +55,7 @@ export async function publishFeedback(
 export async function publishSessionEvent(
   sessionId: string,
   event: string,
-  data?: unknown
+  data?: Record<string, unknown>
 ): Promise<void> {
   try {
     const ably = getAblyClient();

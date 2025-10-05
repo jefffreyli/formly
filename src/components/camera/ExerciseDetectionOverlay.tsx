@@ -51,11 +51,11 @@ export function ExerciseDetectionOverlay({
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
+        exit={{ opacity: 0, y: 20 }}
         transition={{ duration: 0.3 }}
-        className="absolute top-4 left-4 right-4 z-10 max-w-md"
+        className="w-full max-w-md"
       >
         {/* Error State */}
         {error && (

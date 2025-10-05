@@ -3,6 +3,10 @@
  * Converts text feedback to natural speech audio
  */
 
+import { createLogger } from "@/lib/utils/logger";
+
+const logger = createLogger("ElevenLabs");
+
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1";
 
 // Default voice ID for "Adam" - professional, clear voice
@@ -28,6 +32,7 @@ export async function generateSpeech(
 ): Promise<string> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
+    logger.error("ELEVENLABS_API_KEY environment variable is not set");
     throw new Error("ELEVENLABS_API_KEY environment variable is not set");
   }
 
@@ -38,7 +43,15 @@ export async function generateSpeech(
     similarityBoost = 0.75,
   } = options;
 
+  const startTime = Date.now();
+
   try {
+    logger.info("Calling ElevenLabs TTS API", {
+      textLength: text.length,
+      voiceId,
+      modelId,
+    });
+
     // Call ElevenLabs TTS API
     const response = await fetch(
       `${ELEVENLABS_API_URL}/text-to-speech/${voiceId}`,
@@ -63,7 +76,10 @@ export async function generateSpeech(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("ElevenLabs API error:", errorText);
+      logger.error("ElevenLabs API error", undefined, {
+        status: response.status,
+        errorText: errorText.slice(0, 500),
+      });
       throw new Error(`ElevenLabs API error: ${response.status}`);
     }
 
@@ -76,9 +92,19 @@ export async function generateSpeech(
     const base64Audio = Buffer.from(audioBuffer).toString("base64");
     const audioDataUrl = `data:audio/mpeg;base64,${base64Audio}`;
 
+    const duration = Date.now() - startTime;
+    logger.info("Speech generated successfully", {
+      duration: `${duration}ms`,
+      audioSize: audioBuffer.byteLength,
+      base64Length: base64Audio.length,
+    });
+
     return audioDataUrl;
   } catch (error) {
-    console.error("Failed to generate speech:", error);
+    const duration = Date.now() - startTime;
+    logger.error("Failed to generate speech", error, {
+      duration: `${duration}ms`,
+    });
     throw new Error("Failed to generate speech audio");
   }
 }

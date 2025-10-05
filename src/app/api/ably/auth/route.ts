@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Ably from "ably/promises";
+import Ably from "ably";
 
 export const runtime = "nodejs";
 
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const tokenRequest = await ably.auth.createTokenRequest({
       clientId: sessionId,
       capability: {
-        [`session:${sessionId}`]: ["subscribe"], // Can only subscribe to own session
+        [`stream:${sessionId}`]: ["publish", "subscribe"], // Can publish and subscribe to own stream
       },
       ttl: 3600000, // 1 hour token validity
     });

@@ -11,7 +11,17 @@ import { usePoseDetection } from "@/hooks/usePoseDetection";
 
 export default function Home() {
   const { stream, error, isActive, startCamera, stopCamera } = useCamera();
-  const { startDetection, stopDetection } = usePoseDetection();
+  const { startDetection, stopDetection, isInitialized, fps } =
+    usePoseDetection(
+      null, // videoElement will be set by CameraView
+      false, // enabled will be controlled by CameraView
+      {
+        modelType: "MoveNet", // Fast and lightweight for real-time
+        enableSmoothing: true,
+        enableSegmentation: false,
+        minPoseScore: 0.25,
+      }
+    );
   const [isLoading, setIsLoading] = useState(false);
 
   const handleStartCamera = async () => {

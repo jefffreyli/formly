@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useCallback } from "react";
 import { videoToBase64 } from "@/lib/utils/imageProcessing";
 
@@ -71,7 +73,7 @@ export function useFrameCapture(
         for (let i = 0; i < frameCount; i++) {
           try {
             const frame = await videoToBase64(videoElement);
-            frames.push(frame);
+            if (frame) frames.push(frame);
 
             // Wait before capturing next frame (except for the last one)
             if (i < frameCount - 1) {

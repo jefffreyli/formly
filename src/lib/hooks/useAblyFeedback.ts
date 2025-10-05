@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import Ably from "ably/promises";
+import Ably from "ably";
 import type { FormFeedback } from "@/types/exercise";
 
 interface FeedbackMessage {
@@ -31,7 +31,7 @@ export function useAblyFeedback(
   const [error, setError] = useState<string | null>(null);
 
   const ablyClientRef = useRef<Ably.Realtime | null>(null);
-  const channelRef = useRef<Ably.Types.RealtimeChannelPromise | null>(null);
+  const channelRef = useRef<Ably.RealtimeChannel | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {

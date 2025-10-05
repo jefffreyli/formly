@@ -9,14 +9,16 @@ interface UseLiveExerciseDetectionReturn {
   error: string | null;
 }
 
-const DETECTION_INTERVAL = 10000; // 10 seconds between detections (to stay under 10 req/min limit)
-const CACHE_DURATION = 12000; // Cache results for 12 seconds
-const MAX_RETRY_DELAY = 60000; // Maximum retry delay of 60 seconds
-const CAPTURE_DURATION = 6000; // Capture frames over 6 seconds (enough for a full rep)
-const FRAME_COUNT = 10; // Number of frames to capture (10 frames over 6 seconds = ~1.67 FPS)
+// Optimized for lower latency
+const DETECTION_INTERVAL = 3000; // 3 seconds between detections (faster feedback)
+const CACHE_DURATION = 4000; // Cache results for 4 seconds
+const MAX_RETRY_DELAY = 10000; // Maximum retry delay of 10 seconds
+const CAPTURE_DURATION = 500; // Capture frames over 0.5 seconds (much faster capture)
+const FRAME_COUNT = 5; // 5 frames at ~10 FPS (reduced from 30 for faster processing)
 
 /**
  * Hook for live exercise detection from video stream
+ * Optimized for low latency feedback
  * @param videoElement - The HTML video element to analyze
  * @param enabled - Whether detection is enabled
  * @param exerciseType - The type of exercise to analyze
@@ -95,7 +97,7 @@ export function useLiveExerciseDetection(
       setError(null);
 
       try {
-        // Capture sequence of frames over time to analyze movement
+        // Capture sequence of frames - much faster now (0.5s instead of 6s)
         const frames = await captureFrameSequence(
           CAPTURE_DURATION,
           FRAME_COUNT
@@ -107,8 +109,16 @@ export function useLiveExerciseDetection(
           return;
         }
 
-        // Call Vision Language Model API with frame sequence
+        console.log(
+          `Captured ${frames.length} frames in ${CAPTURE_DURATION}ms`
+        );
+
+        // Call Vision Language Model API with frame sequence (using streaming for faster response)
+        const startTime = Date.now();
         const result = await detectExercise(frames, exerciseType);
+        const apiTime = Date.now() - startTime;
+
+        console.log(`API response time: ${apiTime}ms`);
 
         // Update state
         setFormFeedback(result.formFeedback);
