@@ -75,12 +75,38 @@ export async function generateSpeech(
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
+      let errorText = "";
+      let errorJson = null;
+      
+      try {
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          errorJson = await response.json();
+          errorText = JSON.stringify(errorJson);
+        } else {
+          errorText = await response.text();
+        }
+      } catch (e) {
+        errorText = "Could not parse error response";
+      }
+      
       logger.error("ElevenLabs API error", undefined, {
         status: response.status,
+        statusText: response.statusText,
         errorText: errorText.slice(0, 500),
+        errorJson,
       });
-      throw new Error(`ElevenLabs API error: ${response.status}`);
+      
+      // Provide more specific error messages
+      if (response.status === 401) {
+        throw new Error("Invalid ElevenLabs API key");
+      } else if (response.status === 429) {
+        throw new Error("ElevenLabs rate limit exceeded");
+      } else if (response.status === 400) {
+        throw new Error(`ElevenLabs API error: ${errorText || "Bad request"}`);
+      } else {
+        throw new Error(`ElevenLabs API error: ${response.status} - ${errorText}`);
+      }
     }
 
     // Get audio as blob

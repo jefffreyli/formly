@@ -11,9 +11,9 @@ interface ExerciseDetectionOverlayProps {
 }
 
 const QUALITY_LABELS: Record<FormQuality, string> = {
-  good: "Good Form",
-  needs_improvement: "Needs Improvement",
-  poor: "Poor Form",
+  good: "GOOD",
+  needs_improvement: "FAIR",
+  poor: "POOR",
 };
 
 const QUALITY_COLORS: Record<
@@ -92,79 +92,39 @@ export function ExerciseDetectionOverlay({
           </div>
         )}
 
-        {/* Form Feedback State */}
+        {/* Form Feedback State - Simple and Bold */}
         {formFeedback && !isDetecting && !error && (
           <div
-            className={`backdrop-blur-sm rounded-xl shadow-formly-lg px-4 py-3 border ${
+            className={`backdrop-blur-sm rounded-2xl shadow-2xl px-8 py-6 border-2 ${
               QUALITY_COLORS[formFeedback.quality].bg
             } ${
               formFeedback.quality === "good"
-                ? "border-green-200"
+                ? "border-green-300"
                 : formFeedback.quality === "needs_improvement"
-                ? "border-yellow-200"
-                : "border-red-200"
+                ? "border-yellow-300"
+                : "border-red-300"
             }`}
           >
-            <div className="space-y-3">
-              {/* Header with Quality and Exercise Name */}
-              <div className="space-y-1">
-                <div className="flex items-start space-x-3">
-                  <div className="flex-shrink-0 pt-1">
-                    <div
-                      className={`w-3 h-3 ${
-                        QUALITY_COLORS[formFeedback.quality].dot
-                      } rounded-full`}
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-xs font-medium opacity-70 mb-0.5">
-                      {exerciseName}
-                    </div>
-                    <div
-                      className={`text-sm font-bold ${
-                        QUALITY_COLORS[formFeedback.quality].text
-                      }`}
-                    >
-                      {formFeedback.isPerformingExercise
-                        ? QUALITY_LABELS[formFeedback.quality]
-                        : "Not Performing Exercise"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Feedback Text */}
+            <div className="text-center space-y-4">
+              {/* Big Quality Rating */}
               <div
-                className={`text-xs ${
+                className={`text-6xl font-black tracking-tight ${
                   QUALITY_COLORS[formFeedback.quality].text
-                } opacity-90`}
+                }`}
               >
-                {formFeedback.feedback}
+                {formFeedback.isPerformingExercise
+                  ? QUALITY_LABELS[formFeedback.quality]
+                  : "WRONG"}
               </div>
 
-              {/* Corrections */}
+              {/* Single Piece of Advice */}
               {formFeedback.corrections.length > 0 && (
-                <div className="space-y-1.5">
-                  <div
-                    className={`text-xs font-semibold ${
-                      QUALITY_COLORS[formFeedback.quality].text
-                    }`}
-                  >
-                    Corrections:
-                  </div>
-                  <ul className="space-y-1">
-                    {formFeedback.corrections.map((correction, index) => (
-                      <li
-                        key={index}
-                        className={`text-xs ${
-                          QUALITY_COLORS[formFeedback.quality].text
-                        } opacity-90 flex items-start`}
-                      >
-                        <span className="mr-2">•</span>
-                        <span className="flex-1">{correction}</span>
-                      </li>
-                    ))}
-                  </ul>
+                <div
+                  className={`text-lg font-medium ${
+                    QUALITY_COLORS[formFeedback.quality].text
+                  } opacity-90`}
+                >
+                  {formFeedback.corrections[0]}
                 </div>
               )}
             </div>
