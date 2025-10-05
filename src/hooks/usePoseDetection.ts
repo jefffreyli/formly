@@ -275,7 +275,8 @@ export function usePoseDetection(
     return () => {
       stopDetection();
     };
-  }, [enabled, videoElement, startDetection, stopDetection]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, videoElement]);
 
   return {
     pose,

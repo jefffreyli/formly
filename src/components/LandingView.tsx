@@ -16,7 +16,7 @@ export function LandingView({
         {/* App Title */}
         <div className="space-y-4 animate-fade-in-up">
           <h1 className="text-6xl md:text-7xl font-light tracking-tight text-foreground-primary">
-            Formly
+            Reply
           </h1>
           <p className="text-xl md:text-2xl text-foreground-secondary font-light max-w-lg mx-auto leading-relaxed">
             Perfect your form, accelerate recovery

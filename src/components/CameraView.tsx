@@ -2,9 +2,7 @@
 
 import { useRef, useEffect, useState } from "react";
 import { usePoseExerciseDetection } from "@/lib/hooks/usePoseExerciseDetection";
-import { useLiveKitStream } from "@/lib/hooks/useLiveKitStream";
 import { usePoseDetection } from "@/hooks/usePoseDetection";
-import { getOrCreateSessionId } from "@/lib/api/sessionService";
 import { ExerciseDetectionOverlay } from "@/components/camera/ExerciseDetectionOverlay";
 import {
   ExerciseSelector,
@@ -31,7 +29,6 @@ export function CameraView({
   const [autoDetectEnabled, setAutoDetectEnabled] = useState(false);
   const [selectedExercise, setSelectedExercise] =
     useState<ExerciseType>("overhead_press");
-  const [sessionId] = useState(() => getOrCreateSessionId());
 
   const { clearQueue } = useAudioQueue();
 
@@ -60,15 +57,6 @@ export function CameraView({
       selectedExercise
     );
 
-  // LiveKit video streaming hook - WebRTC-based real-time A/V streaming
-  const {
-    isStreaming,
-    streamError,
-    connectionState,
-    startStream,
-    stopStream,
-  } = useLiveKitStream(stream, sessionId);
-
   // Get the exercise name for display
   const exerciseName =
     AVAILABLE_EXERCISES.find((ex) => ex.id === selectedExercise)?.name ||
@@ -78,18 +66,8 @@ export function CameraView({
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
       addLog("success", "Camera", "Camera stream connected");
-
-      // Auto-start LiveKit streaming when camera is active
-      if (!isStreaming) {
-        addLog("info", "LiveKit", "Starting WebRTC stream...");
-        startStream();
-      }
-    } else if (!stream && isStreaming) {
-      // Stop LiveKit streaming when camera is turned off
-      addLog("info", "LiveKit", "Stopping WebRTC stream");
-      stopStream();
     }
-  }, [stream, isStreaming, startStream, stopStream]);
+  }, [stream]);
 
   // Draw pose skeleton on canvas
   useEffect(() => {
