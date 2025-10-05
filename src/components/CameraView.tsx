@@ -12,7 +12,7 @@ import {
 } from "@/components/ExerciseSelector";
 import type { ExerciseType } from "@/types/exercise";
 import { drawPoseSkeleton } from "@/lib/utils/poseDrawing";
-import { FeedbackLog, addLog } from "@/components/FeedbackLog";
+import { addLog } from "@/components/FeedbackLog";
 import { useAudioQueue } from "@/lib/hooks/useAudioQueue";
 
 interface CameraViewProps {
@@ -118,38 +118,13 @@ export function CameraView({
     );
   };
 
-  const handleToggleStream = () => {
-    if (isStreaming) {
-      stopStream();
-    } else {
-      startStream();
-    }
-  };
 
   return (
     <div className={`relative w-full space-y-4 ${className}`}>
-      {/* Exercise Selector */}
-      <ExerciseSelector
-        selectedExercise={selectedExercise}
-        onExerciseChange={(exercise) => {
-          setSelectedExercise(exercise);
-          clearQueue(); // Clear any pending audio from previous exercise
-          addLog(
-            "info",
-            "Exercise",
-            `Exercise changed to ${
-              AVAILABLE_EXERCISES.find((ex) => ex.id === exercise)?.name
-            } - audio queue cleared`,
-            { exerciseType: exercise }
-          );
-        }}
-        className="max-w-md mx-auto"
-      />
-
-      {/* Main Content: Video and Log side by side */}
-      <div className="flex flex-col lg:flex-row gap-4 items-start">
-        {/* Video Container - Takes more space */}
-        <div className="relative w-full lg:w-2/3 camera-transition">
+      {/* Main Content: Video takes full width */}
+      <div className="flex flex-col gap-4 items-center">
+        {/* Video Container - Takes full space */}
+        <div className="relative w-full max-w-4xl camera-transition">
           <video
             ref={videoRef}
             autoPlay
@@ -166,38 +141,6 @@ export function CameraView({
             style={{ maxHeight: "80vh" }}
           />
 
-          {/* Stream LIVE Indicator - Top Left */}
-          <div className="absolute top-4 left-4 z-10 space-y-2">
-            <button
-              onClick={handleToggleStream}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-formly hover:shadow-formly-lg ${
-                isStreaming
-                  ? "bg-red-500 text-white"
-                  : "bg-white/90 text-foreground-primary hover:bg-white"
-              } backdrop-blur-sm`}
-            >
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  isStreaming ? "bg-white animate-pulse" : "bg-gray-400"
-                }`}
-              />
-              <span className="text-sm">LiveKit:</span>
-              <span className="text-sm font-semibold">
-                {connectionState === "connected"
-                  ? "LIVE"
-                  : connectionState === "reconnecting"
-                  ? "RECONNECTING"
-                  : "OFF"}
-              </span>
-            </button>
-
-            {/* Stream Error */}
-            {streamError && (
-              <div className="mt-2 bg-red-500/90 text-white text-xs px-3 py-2 rounded-xl backdrop-blur-sm">
-                {streamError}
-              </div>
-            )}
-          </div>
 
           {/* Exercise Detection Overlay - Bottom Right */}
           {autoDetectEnabled && (
@@ -228,12 +171,25 @@ export function CameraView({
             </button>
           </div>
         </div>
-
-        {/* Real-time Feedback Log - Right Column on desktop, below on mobile */}
-        <div className="w-full lg:w-1/3 flex-shrink-0">
-          <FeedbackLog />
-        </div>
       </div>
+
+      {/* Exercise Selector */}
+      <ExerciseSelector
+        selectedExercise={selectedExercise}
+        onExerciseChange={(exercise) => {
+          setSelectedExercise(exercise);
+          clearQueue(); // Clear any pending audio from previous exercise
+          addLog(
+            "info",
+            "Exercise",
+            `Exercise changed to ${
+              AVAILABLE_EXERCISES.find((ex) => ex.id === exercise)?.name
+            } - audio queue cleared`,
+            { exerciseType: exercise }
+          );
+        }}
+        className="max-w-md mx-auto"
+      />
     </div>
   );
 }

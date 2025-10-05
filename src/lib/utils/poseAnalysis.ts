@@ -312,7 +312,7 @@ function analyzeExternalRotation(keypoints: Keypoint[]): FormFeedback {
   if (!leftElbowAtSide && !rightElbowAtSide) {
     return {
       quality: "poor",
-      feedback: "That looks like a bicep curl, not external rotation.",
+      feedback: "This isn't external rotation.",
       corrections: [
         "Pin your elbow to your side",
         "Only rotate your forearm",

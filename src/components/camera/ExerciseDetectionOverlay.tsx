@@ -55,19 +55,15 @@ export function ExerciseDetectionOverlay({
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
         transition={{ duration: 0.3 }}
-        className="w-full max-w-md"
+        className="w-full max-w-xs"
       >
         {/* Error State */}
         {error && (
-          <div className="bg-red-50/95 backdrop-blur-sm rounded-xl shadow-formly-lg px-4 py-3 border border-red-200">
-            <div className="flex items-start space-x-3">
-              <div className="flex-shrink-0 pt-1">
-                <div className="w-3 h-3 bg-red-500 rounded-full" />
-              </div>
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-red-800">
-                  {error}
-                </div>
+          <div className="bg-red-50/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 border border-red-200">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full" />
+              <div className="text-xs font-medium text-red-800">
+                {error}
               </div>
             </div>
           </div>
@@ -75,27 +71,20 @@ export function ExerciseDetectionOverlay({
 
         {/* Detecting State */}
         {isDetecting && !error && (
-          <div className="bg-blue-50/95 backdrop-blur-sm rounded-xl shadow-formly-lg px-4 py-3 border border-blue-200">
-            <div className="flex items-start space-x-3">
-              <div className="flex-shrink-0 pt-1">
-                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
-              </div>
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-blue-800">
-                  Recording movement...
-                </div>
-                <div className="text-xs text-blue-700 opacity-80 mt-0.5">
-                  Analyzing your {exerciseName.toLowerCase()} form
-                </div>
+          <div className="bg-blue-50/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 border border-blue-200">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+              <div className="text-xs font-medium text-blue-800">
+                Analyzing...
               </div>
             </div>
           </div>
         )}
 
-        {/* Form Feedback State - Simple and Bold */}
+        {/* Form Feedback State - Minimalistic */}
         {formFeedback && !isDetecting && !error && (
           <div
-            className={`backdrop-blur-sm rounded-2xl shadow-2xl px-8 py-6 border-2 ${
+            className={`backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 border ${
               QUALITY_COLORS[formFeedback.quality].bg
             } ${
               formFeedback.quality === "good"
@@ -105,10 +94,10 @@ export function ExerciseDetectionOverlay({
                 : "border-red-300"
             }`}
           >
-            <div className="text-center space-y-4">
-              {/* Big Quality Rating */}
+            <div className="text-left space-y-1">
+              {/* Quality Rating */}
               <div
-                className={`text-6xl font-black tracking-tight ${
+                className={`text-sm font-bold ${
                   QUALITY_COLORS[formFeedback.quality].text
                 }`}
               >
@@ -120,9 +109,9 @@ export function ExerciseDetectionOverlay({
               {/* Single Piece of Advice */}
               {formFeedback.corrections.length > 0 && (
                 <div
-                  className={`text-lg font-medium ${
+                  className={`text-xs ${
                     QUALITY_COLORS[formFeedback.quality].text
-                  } opacity-90`}
+                  } opacity-80`}
                 >
                   {formFeedback.corrections[0]}
                 </div>
